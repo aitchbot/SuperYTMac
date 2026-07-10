@@ -17,8 +17,13 @@ Esta es la versión para macOS. Si buscás la versión para Windows, es un repos
    - El instalador revisa que tengas **Homebrew** (el administrador de paquetes de macOS).
      Si no lo tenés, te va a pedir que lo instales desde https://brew.sh y que vuelvas
      a correr `Instalar.command` después.
-   - Con Homebrew ya presente, instala automáticamente Python 3.12, las dependencias de
-     Python y Deno. Puede tardar varios minutos según la conexión.
+   - Con Homebrew ya presente, instala automáticamente Python 3.12 (con Tkinter, la
+     interfaz gráfica), las dependencias de Python y Deno. Puede tardar varios minutos
+     según la conexión.
+   - Si tu Homebrew tiene problemas típicos de instalaciones viejas (carpetas sin permiso
+     de escritura, enlaces de versiones anteriores), el instalador los corrige solo y
+     reintenta. Para corregir permisos puede **pedirte la contraseña de tu usuario** —
+     es normal, la pide el propio macOS para autorizar el arreglo.
    - Al final va a decir **"Instalación completa"**. Presioná ENTER para cerrar esa ventana.
 3. Necesitás conexión a internet durante este paso (no después, para usar la app).
 
@@ -65,7 +70,10 @@ python3 app.py
    automáticos) se usan esos; si **no** tiene español pero sí inglés, SuperYT los traduce
    automáticamente (usando Google Translate por detrás); si no tiene ninguno de los dos
    idiomas, se descarga el video normalmente y no se agrega nada.
-7. Presioná **Descargar**.
+7. (Opcional) **"Si YouTube da el error 'no soy un robot', usar la sesión iniciada en:"** —
+   dejalo en **Ninguno** salvo que YouTube bloquee las descargas pidiendo verificación
+   (ver [Notas](#notas) más abajo).
+8. Presioná **Descargar**.
 
 Las listas de reproducción se guardan en una subcarpeta con el nombre de la lista,
 con los videos numerados según su posición en la lista. Si un video de la lista
@@ -76,6 +84,22 @@ falla, la descarga continúa con el resto.
 - La traducción de subtítulos necesita internet (usa un servicio de traducción en línea,
   gratuito, sin necesidad de cuenta ni clave). Si falla o no hay conexión, la descarga
   del video sigue igual, simplemente sin subtítulos.
+- Si YouTube responde **"Sign in to confirm you're not a bot"** (suele venir acompañado
+  de un "HTTP Error 429: Too Many Requests"), está bloqueando temporalmente las descargas
+  sin sesión desde tu conexión. Primero probá esperar unas horas. Si sigue, elegí en el
+  selector de la app el navegador donde tengas la **sesión de YouTube/Google iniciada**
+  (Safari, Chrome, Firefox, etc.) y reintentá — la app descarga usando esa sesión, que es
+  la solución que recomienda el propio yt-dlp. Detalles según el navegador:
+  - **Safari**: macOS protege sus cookies; si falla la lectura, activá "Terminal" en
+    Ajustes del Sistema → Privacidad y seguridad → **Acceso total al disco**, y volvé
+    a abrir la app.
+  - **Chrome / Edge / Brave / Opera**: la primera vez macOS puede pedir acceso al
+    **llavero** — poné tu contraseña y elegí "Permitir siempre".
+  - **Firefox**: no pide nada especial.
+
+  Tené en cuenta que con esta opción las descargas quedan asociadas a esa cuenta de
+  Google; para uso normal no hay problema, por eso igualmente lo recomendable es dejar
+  "Ninguno" mientras no aparezca el error.
 - YouTube a veces limita momentáneamente cuántos subtítulos se pueden pedir seguidos
   ("HTTP Error 429"). Si pasa, SuperYT reintenta solo la descarga del subtítulo unas
   pocas veces antes de rendirse; el video en sí no se ve afectado.
@@ -87,6 +111,8 @@ falla, la descarga continúa con el resto.
 ## ¿Qué instala `Instalar.command`?
 
 - **Python 3.12** (si no lo tenías, vía Homebrew).
+- **Tkinter** (`python-tk@3.12`): la interfaz gráfica. El Python de Homebrew no la trae
+  incluida, así que se instala aparte.
 - **yt-dlp**, **ffmpeg** y **yt-dlp-ejs** (el motor de descarga, el que une video+audio,
   y el resolutor del desafío de JavaScript que exige YouTube en algunos videos).
 - **Deno** (otro requisito para resolver ese mismo desafío de JavaScript).
@@ -97,6 +123,6 @@ más allá de lo que Homebrew ya gestiona.
 ## Instalación manual (por si `Instalar.command` falla)
 
 1. Instalar Homebrew desde https://brew.sh.
-2. `brew install python@3.12 deno`
+2. `brew install python@3.12 python-tk@3.12 deno`
 3. En la carpeta del proyecto: `python3.12 -m pip install -r requirements.txt --break-system-packages`
 4. Ejecutar con `SuperYT.command` o `python3.12 app.py`.

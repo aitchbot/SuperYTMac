@@ -24,6 +24,18 @@ IDIOMAS_ES = ["es", "es-419", "es-ES", "es-MX", "es-AR"]
 IDIOMAS_EN = ["en", "en-US", "en-GB", "en-orig"]
 SEPARADOR_LINEA = " ¦ "  # reemplaza saltos de linea internos de un subtitulo al armar el lote a traducir
 
+# Nombre visible en la interfaz -> identificador de navegador que entiende yt-dlp
+# (cookiesfrombrowser). "Ninguno" = descargar sin sesión, el modo normal.
+NAVEGADORES_COOKIES = {
+    "Ninguno": None,
+    "Safari": "safari",
+    "Chrome": "chrome",
+    "Firefox": "firefox",
+    "Edge": "edge",
+    "Brave": "brave",
+    "Opera": "opera",
+}
+
 
 def _detectar_deno():
     """Ubica el ejecutable de Deno (requerido por YouTube para resolver retos de JS).
@@ -284,6 +296,18 @@ class SuperYT(tk.Tk):
             variable=self.var_elegir,
         ).pack(side="left")
 
+        fila_cookies = ttk.Frame(cont)
+        fila_cookies.pack(fill="x", pady=(0, 10))
+        ttk.Label(fila_cookies, text='Si YouTube da el error "no soy un robot", usar la sesión iniciada en:').pack(side="left")
+        self.var_navegador = tk.StringVar(value="Ninguno")
+        ttk.Combobox(
+            fila_cookies,
+            textvariable=self.var_navegador,
+            state="readonly",   # solo elegir de la lista, sin texto libre
+            values=list(NAVEGADORES_COOKIES),
+            width=10,
+        ).pack(side="left", padx=6)
+
         fila_subs = ttk.Frame(cont)
         fila_subs.pack(fill="x", pady=(0, 10))
         ttk.Label(fila_subs, text="Subtítulos en español (si están disponibles):").pack(side="left")
@@ -364,14 +388,15 @@ class SuperYT(tk.Tk):
 
         hilo = threading.Thread(
             target=self._descargar,
-            args=(urls, carpeta, self.var_modo.get(), self.var_formato.get(), self.var_elegir.get(), self.var_subtitulos.get()),
+            args=(urls, carpeta, self.var_modo.get(), self.var_formato.get(), self.var_elegir.get(), self.var_subtitulos.get(),
+                  NAVEGADORES_COOKIES.get(self.var_navegador.get())),
             daemon=True,
         )
         hilo.start()
 
     # ---------- lógica de descarga (corre en hilo aparte) ----------
 
-    def _descargar(self, urls, carpeta, modo, formato, elegir, subtitulos):
+    def _descargar(self, urls, carpeta, modo, formato, elegir, subtitulos, navegador):
         def hook(d):
             if self.cancelar:
                 raise Cancelado()
@@ -401,6 +426,14 @@ class SuperYT(tk.Tk):
                 self.cola_msgs.put(("log", "⚠ " + ANSI.sub("", msg)))
             def error(s, msg):
                 self.cola_msgs.put(("log", "✖ " + ANSI.sub("", msg)))
+                # YouTube a veces exige una sesión iniciada ("Sign in to confirm you're
+                # not a bot"); el usuario final no sabe qué hacer con ese mensaje, así
+                # que se le indica la opción que lo resuelve.
+                if "Sign in to confirm" in msg and not navegador:
+                    self.cola_msgs.put(("log",
+                        "💡 YouTube está pidiendo verificación. En la opción \"Si YouTube da el error "
+                        "'no soy un robot'...\" elegí el navegador donde tengas la sesión de YouTube "
+                        "iniciada en esta computadora, y volvé a intentar."))
 
         # Si la URL es una lista, crea una subcarpeta con el nombre de la lista y numera los videos.
         plantilla = os.path.join(carpeta, "%(playlist_title|)s", "%(playlist_index&{} - |)s%(title)s [%(id)s].%(ext)s")
@@ -417,6 +450,26 @@ class SuperYT(tk.Tk):
         deno = _detectar_deno()
         if deno:
             opciones["js_runtimes"] = {"deno": {"path": deno}}
+        if navegador:
+            # (navegador,) sin perfil: yt-dlp usa el perfil por defecto. Cada familia
+            # de navegador protege sus cookies distinto en macOS, y el usuario tiene
+            # que saber qué va a pedirle el sistema o va a creer que es un error:
+            # - Safari: el archivo de cookies está protegido por TCC; Terminal
+            #   necesita "Acceso total al disco" para poder leerlo.
+            # - Chrome/Edge/Brave/Opera: cifran las cookies con una clave guardada
+            #   en el llavero; macOS pide autorizar ese acceso la primera vez.
+            # - Firefox: no cifra, no pide nada.
+            opciones["cookiesfrombrowser"] = (navegador,)
+            nombre = navegador.capitalize()
+            self.cola_msgs.put(("log", f"Usando la sesión de YouTube de {nombre}."))
+            if navegador == "safari":
+                self.cola_msgs.put(("log",
+                    "Si falla la lectura de cookies de Safari: en Ajustes del Sistema > Privacidad y "
+                    'seguridad > Acceso total al disco, activá "Terminal", y volvé a abrir la app.'))
+            elif navegador != "firefox":
+                self.cola_msgs.put(("log",
+                    "Si el sistema pide acceso al llavero de macOS, ingresá tu contraseña y "
+                    'elegí "Permitir siempre".'))
         if modo == "audio":
             opciones.update({
                 "format": "bestaudio/best",
@@ -443,7 +496,7 @@ class SuperYT(tk.Tk):
 
                 ops = dict(opciones)
                 if elegir:
-                    info_lista = self._info_lista(url)
+                    info_lista = self._info_lista(url, navegador)
                     if info_lista is not None:
                         indices = self._pedir_seleccion(info_lista)
                         if indices is None:
@@ -468,13 +521,15 @@ class SuperYT(tk.Tk):
             self.cola_msgs.put(("log", f"✖ Error: {e}"))
             self.cola_msgs.put(("fin", "Terminó con errores. Revisá el registro."))
 
-    def _info_lista(self, url):
+    def _info_lista(self, url, navegador=None):
         """Devuelve la info de la lista (con sus videos) o None si la URL es un video suelto."""
         self.cola_msgs.put(("estado", "Obteniendo videos de la lista..."))
         opts = {"extract_flat": "in_playlist", "quiet": True, "no_warnings": True}
         deno = _detectar_deno()
         if deno:
             opts["js_runtimes"] = {"deno": {"path": deno}}
+        if navegador:
+            opts["cookiesfrombrowser"] = (navegador,)
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)

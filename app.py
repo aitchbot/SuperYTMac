@@ -24,6 +24,9 @@ IDIOMAS_ES = ["es", "es-419", "es-ES", "es-MX", "es-AR"]
 IDIOMAS_EN = ["en", "en-US", "en-GB", "en-orig"]
 SEPARADOR_LINEA = " ¦ "  # reemplaza saltos de linea internos de un subtitulo al armar el lote a traducir
 
+# Alto maximo (en pixeles) para cada nivel de calidad; None = sin limite (la mejor disponible).
+LIMITE_ALTURA = {"alta": None, "media": 720, "baja": 480}
+
 # Nombre visible en la interfaz -> identificador de navegador que entiende yt-dlp
 # (cookiesfrombrowser). "Ninguno" = descargar sin sesión, el modo normal.
 NAVEGADORES_COOKIES = {
@@ -287,6 +290,14 @@ class SuperYT(tk.Tk):
         ttk.Radiobutton(fila_formato, text="MKV (recomendado)", variable=self.var_formato, value="mkv").pack(side="left", padx=(6, 0))
         ttk.Radiobutton(fila_formato, text="MP4", variable=self.var_formato, value="mp4").pack(side="left", padx=12)
 
+        fila_calidad = ttk.Frame(cont)
+        fila_calidad.pack(fill="x", pady=(0, 10))
+        ttk.Label(fila_calidad, text="Calidad de video:").pack(side="left")
+        self.var_calidad = tk.StringVar(value="alta")
+        ttk.Radiobutton(fila_calidad, text="Alta (mejor disponible)", variable=self.var_calidad, value="alta").pack(side="left", padx=(6, 0))
+        ttk.Radiobutton(fila_calidad, text="Media (hasta 720p)", variable=self.var_calidad, value="media").pack(side="left", padx=12)
+        ttk.Radiobutton(fila_calidad, text="Baja (hasta 480p)", variable=self.var_calidad, value="baja").pack(side="left")
+
         fila_listas = ttk.Frame(cont)
         fila_listas.pack(fill="x", pady=(0, 10))
         self.var_elegir = tk.BooleanVar(value=False)
@@ -388,7 +399,7 @@ class SuperYT(tk.Tk):
 
         hilo = threading.Thread(
             target=self._descargar,
-            args=(urls, carpeta, self.var_modo.get(), self.var_formato.get(), self.var_elegir.get(), self.var_subtitulos.get(),
+            args=(urls, carpeta, self.var_modo.get(), self.var_formato.get(), self.var_calidad.get(), self.var_elegir.get(), self.var_subtitulos.get(),
                   NAVEGADORES_COOKIES.get(self.var_navegador.get())),
             daemon=True,
         )
@@ -396,7 +407,7 @@ class SuperYT(tk.Tk):
 
     # ---------- lógica de descarga (corre en hilo aparte) ----------
 
-    def _descargar(self, urls, carpeta, modo, formato, elegir, subtitulos, navegador):
+    def _descargar(self, urls, carpeta, modo, formato, calidad, elegir, subtitulos, navegador):
         def hook(d):
             if self.cancelar:
                 raise Cancelado()
@@ -480,7 +491,11 @@ class SuperYT(tk.Tk):
                 }],
             })
         else:
-            opciones["format"] = "bestvideo+bestaudio/best"
+            altura = LIMITE_ALTURA.get(calidad)
+            if altura:
+                opciones["format"] = f"bestvideo[height<={altura}]+bestaudio/best[height<={altura}]"
+            else:
+                opciones["format"] = "bestvideo+bestaudio/best"
             opciones["postprocessors"] = [{"key": "FFmpegVideoRemuxer", "preferedformat": formato}]
             if subtitulos != "no":
                 opciones["writesubtitles"] = True
